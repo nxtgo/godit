@@ -197,10 +197,18 @@ func (e *Editor) moveLeft() {
 		e.CY--
 		e.CX = len(e.Buf.Rows[e.CY])
 	}
+	if e.CX < 0 {
+		e.CX = 0
+	}
 	e.scroll()
 }
+
 func (e *Editor) moveRight() {
-	if e.CY < len(e.Buf.Rows) && e.CX < len(e.Buf.Rows[e.CY]) {
+	line := ""
+	if e.CY < len(e.Buf.Rows) {
+		line = e.Buf.Rows[e.CY]
+	}
+	if e.CX < len(line) {
 		e.CX++
 	} else if e.CY+1 < len(e.Buf.Rows) {
 		e.CY++
@@ -208,6 +216,7 @@ func (e *Editor) moveRight() {
 	}
 	e.scroll()
 }
+
 func (e *Editor) moveUp() {
 	if e.CY > 0 {
 		e.CY--
@@ -217,6 +226,7 @@ func (e *Editor) moveUp() {
 	}
 	e.scroll()
 }
+
 func (e *Editor) moveDown() {
 	if e.CY+1 < len(e.Buf.Rows) {
 		e.CY++
@@ -246,30 +256,30 @@ func (e *Editor) refresh() error {
 	var b strings.Builder
 	b.WriteString("\x1b[H")
 
+	numWidth := len(fmt.Sprintf("%d", len(e.Buf.Rows))) + 1
+
 	for y := 0; y < e.Rows; y++ {
 		f := y + e.RowOff
 		if f >= len(e.Buf.Rows) {
-			b.WriteByte('~')
+			b.WriteString("~\x1b[K\r\n")
 		} else {
 			lineNum := f + 1
-			// todo: make this customizable
-			b.WriteString(fmt.Sprintf("\033[90m%d\033[0m ", lineNum))
+			b.WriteString(fmt.Sprintf("\033[90m%*d\033[0m ", numWidth-1, lineNum))
 
 			line := e.Buf.Rows[f]
 			visible := ""
 			if e.ColOff < len(line) {
 				visible = line[e.ColOff:]
 			}
-			numWidth := len(fmt.Sprintf("%d ", len(e.Buf.Rows)))
 			if len(visible) > e.Cols-numWidth {
 				visible = visible[:e.Cols-numWidth]
 			}
 			b.WriteString(visible)
+			b.WriteString("\x1b[K\r\n")
 		}
-		b.WriteString("\x1b[K\r\n")
 	}
 
-	// status
+	// status line
 	b.WriteString(Cfg.Theme.Invert)
 	left := e.Filename
 	if left == "" {
@@ -290,6 +300,7 @@ func (e *Editor) refresh() error {
 	b.WriteString(right)
 	b.WriteString(Cfg.Theme.Reset + "\r\n")
 	b.WriteString("\x1b[K")
+
 	if e.Mode == "command" {
 		b.WriteString(":" + string(e.CmdLine))
 	} else {
@@ -301,8 +312,12 @@ func (e *Editor) refresh() error {
 			b.WriteString(msg)
 		}
 	}
+
 	cy := e.CY - e.RowOff + 1
-	cx := e.CX - e.ColOff + 1
+	cx := e.CX - e.ColOff + numWidth
+	if cx < numWidth {
+		cx = numWidth
+	}
 	b.WriteString(fmt.Sprintf("\x1b[%d;%dH", cy, cx))
 	b.WriteString("\x1b[?25h")
 	_, err := os.Stdout.WriteString(b.String())
